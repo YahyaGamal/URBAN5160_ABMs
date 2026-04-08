@@ -1,0 +1,149 @@
+breed [individuals individual]
+extensions [ nw ]
+
+individuals-own [
+  entry-point  ;; my origin
+  trip  ;; the trip an individual is planning to make
+  next-node
+  target-distance
+  i-path
+  origin
+  destination
+  
+  ;;; SIR model
+  state   ;; "S" or "I" or "R"
+  infected-period ;; 
+]
+
+;; Note that paths have a paremeter
+;; path-length
+
+to initialise-individuals
+  create-individuals number-of-pedestrians [
+    set shape "person"
+    set size 15
+    set target-distance (random 500) + 100
+    set entry-point one-of nodes
+    set trip nobody
+    move-to entry-point
+    
+    ;; generate a random number, if it is lower than the infected-%, create an infected agent
+    let rng random 100 + 1
+    ifelse rng < infected-% [
+      set state "I"
+      set infected-period 0
+    ]
+    ;; if the rng is higher than the infected-%, create a susceptible agent
+    [
+      set state "S"
+      set infected-period -1
+    ]
+    color-individual
+  ]
+end
+
+;; behaviour 1 define trip and move
+to define-trip
+  if trip = nobody [
+    let mid-node nobody
+    let mid-distance target-distance / 2
+    let my-entry-point entry-point
+    ;; assure we find a mid node
+    let factor 1.2
+    while [mid-node = nobody] [
+      let candidate-nodes nodes with [
+        nw:weighted-distance-to my-entry-point path-length > mid-distance and
+        nw:weighted-distance-to my-entry-point path-length < mid-distance * factor
+      ]
+      if any? candidate-nodes [
+        set mid-node one-of candidate-nodes
+      ]
+      set factor factor + 0.2
+    ]
+    ;; leg 1
+    let leg-1 nobody
+    ask entry-point [set leg-1 nw:weighted-path-to mid-node path-length]
+    ask link-set leg-1 [set path-length 99999] ;; high penalty distance
+    
+    ;; leg 2
+    let leg-2 nobody
+    ask mid-node [set leg-2 nw:weighted-path-to my-entry-point path-length]
+    ask link-set leg-1 [assign-path-length]
+    
+    set trip (list leg-1 leg-2)
+    set trip reduce sentence trip
+  ]
+  
+end
+
+to move
+  if member? entry-point turtles-here [
+    set i-path 0
+    set origin entry-point
+    let path-temp item 0 trip
+    ifelse [end1] of path-temp = origin [set destination [end2] of path-temp] [set destination [end1] of path-temp]
+  ]
+  
+  let current-path item i-path trip
+  
+  if member? origin turtles-here [
+    face destination
+  ]
+  
+  if distance destination < 2 [
+    move-to destination
+    set i-path i-path + 1
+    if i-path = length trip [set i-path 0]
+    let path-temp item i-path trip
+    ifelse [end1] of path-temp = origin [
+      set destination [end2] of path-temp
+      set origin [end1] of path-temp
+    ] 
+    [
+      set destination [end1] of path-temp
+      set origin [end2] of path-temp
+    ]
+    face destination
+  ]
+  
+  forward 1
+ 
+end
+
+;;-------------------------------------------------------------------------------------------
+;; Behaviour 2 (If infected, recover after a given period)
+;;-------------------------------------------------------------------------------------------
+to manage-infection
+  if state = "I" [
+    set infected-period infected-period + 1  ;; counting how many time steps I was infected
+    if infected-period >= virus-infection-period [
+      set state "R"
+    ]
+  ]
+end
+
+;;-------------------------------------------------------------------------------------------
+;; Behaviour 3 (interact with other agents and infect them if I am infected)
+;;-------------------------------------------------------------------------------------------
+to infect-others
+  if state = "I" [
+    let surrounding-individuals (individuals with [state = "S"] in-radius 1)
+    ask surrounding-individuals [
+      let rng random 100 + 1
+      if rng < infection-probability [
+        set state "I"
+        set infected-period 0
+      ]
+    ]
+  ]
+  
+end
+
+to color-individual
+  (ifelse
+    state = "S" [set color blue]
+    state = "I" [set color red]
+    state = "R" [set color green]
+    )
+end
+

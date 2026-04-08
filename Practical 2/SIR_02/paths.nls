@@ -1,0 +1,82 @@
+ ;; Define the breed for nodes
+breed [nodes node]
+undirected-link-breed [ paths path ]
+
+; Define the variables for roads
+paths-own [
+  r-id ; ID of road
+  path-length ; Distance to the destination node (in miles)
+]
+
+; Define the variables for nodes
+nodes-own[
+  n-id ; ID of node
+  n-xpos ; x-position of node
+  n-ypos ; y-position of node
+]
+
+; Procedure to load the network from CSV files
+to load-network
+  ;; Set the network context to nodes and roads
+  nw:set-context nodes paths
+
+  ;; Load the node list from a CSV file
+  let csv-data csv:from-file "Data/node_list.csv"
+
+  ;; Separate the header row from the data rows
+  let header-row first csv-data
+  let data-rows butfirst csv-data
+
+  ;; Loop through the data rows and create nodes
+  foreach data-rows [
+    row ->
+    create-nodes 1 [
+      ;; Set the node's ID, x-position, and y-position
+      set size 2
+      set color grey
+      set n-id (item 0 row )
+      set n-xpos  item 1 row  * max-pxcor
+      set n-ypos  item 2 row  * max-pycor
+      setxy n-xpos n-ypos
+   ]
+  ]
+  
+  ;; Load the link list from a CSV file
+  set csv-data csv:from-file "Data/link_list.csv"
+
+  ;; Separate the header row from the data rows
+  set header-row first csv-data
+  set data-rows butfirst csv-data
+
+  ;; Loop through the data rows and create roads between nodes
+  foreach data-rows [
+    row ->
+      let link-distance 0
+      let t1   one-of nodes with [ n-id = item 1 row ]
+      let t2   one-of nodes with [ n-id = item 2 row ]
+    ifelse t1 != nobody and t2 != nobody [
+      ;; Create a road between the two nodes and set its properties
+      ask t1 [
+        set link-distance distance t2
+        create-path-with t2 [
+          set r-id item 0 row
+          set color gray
+          set thickness 0.1
+          set path-length link-distance
+        ]
+      ]
+    ][
+      print " error in link or node data"
+    ]
+  ]
+  
+  ;; Assure the network library considers nodes and paths
+  nw:set-context nodes paths
+end
+
+;; Reassigns path length (needed after modifying path lengths to increase penalty when selecting paths)
+to assign-path-length
+  let l nobody
+  ask end1 [set l distance [end2] of myself]
+  set path-length l
+end
